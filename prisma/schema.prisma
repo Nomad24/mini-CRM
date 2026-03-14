@@ -1,0 +1,331 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+enum UserRole {
+  OWNER
+  MANAGER
+}
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  BOOKED
+  IN_PROGRESS
+  DONE
+  LOST
+}
+
+enum CustomFieldType {
+  TEXT
+  TEXTAREA
+  NUMBER
+  DATE
+  SELECT
+  BOOLEAN
+  PHONE
+  EMAIL
+}
+
+enum CustomFieldEntityType {
+  LEAD
+  CONTACT
+}
+
+enum IntegrationProvider {
+  TELEGRAM
+  WHATSAPP
+  WEBHOOK
+  EMAIL
+  FORM
+}
+
+enum IntegrationStatus {
+  PENDING
+  CONNECTED
+  DISCONNECTED
+  ERROR
+}
+
+enum MessageDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum InboxMessageType {
+  TEXT
+  IMAGE
+  FILE
+  AUDIO
+  VIDEO
+  EMAIL
+  SYSTEM
+}
+
+model Workspace {
+  id                     String                  @id @default(cuid())
+  name                   String
+  users                  User[]
+  contacts               Contact[]
+  leads                  Lead[]
+  notes                  Note[]
+  tasks                  Task[]
+  integrations           Integration[]
+  conversations          Conversation[]
+  messages               Message[]
+  integrationEventLogs   IntegrationEventLog[]
+  customFieldDefinitions CustomFieldDefinition[]
+  customFieldValues      CustomFieldValue[]
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
+}
+
+model User {
+  id           String    @id @default(cuid())
+  workspaceId  String
+  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  name         String
+  email        String    @unique
+  passwordHash String
+  role         UserRole  @default(MANAGER)
+  leads        Lead[]    @relation("AssignedLeads")
+  tasks        Task[]    @relation("AssignedTasks")
+  conversations Conversation[] @relation("AssignedConversations")
+  notes        Note[]
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+model Contact {
+  id                String             @id @default(cuid())
+  workspaceId       String
+  workspace         Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  name              String
+  phone             String
+  email             String?
+  leads             Lead[]
+  conversations     Conversation[]
+  customFieldValues CustomFieldValue[]
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  @@index([workspaceId, phone])
+}
+
+model Lead {
+  id          String     @id @default(cuid())
+  workspaceId String
+  workspace   Workspace  @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  contactId   String
+  contact     Contact    @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  source      String?
+  status      LeadStatus @default(NEW)
+  assignedTo  String?
+  assignee    User?      @relation("AssignedLeads", fields: [assignedTo], references: [id])
+  dueDate     DateTime?
+  notes             Note[]
+  tasks             Task[]
+  conversations     Conversation[]
+  customFieldValues CustomFieldValue[]
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@index([workspaceId, status])
+  @@index([workspaceId, createdAt])
+}
+
+model Note {
+  id          String    @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  leadId      String
+  lead        Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  authorId    String
+  author      User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  content     String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([leadId, createdAt])
+}
+
+model Task {
+  id          String    @id @default(cuid())
+  workspaceId String
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  leadId      String
+  lead        Lead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  assignedTo  String
+  assignee    User      @relation("AssignedTasks", fields: [assignedTo], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  dueDate     DateTime?
+  isCompleted Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([workspaceId, isCompleted])
+  @@index([assignedTo, dueDate])
+}
+
+model CustomFieldDefinition {
+  id          String                @id @default(cuid())
+  workspaceId String
+  workspace   Workspace             @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  entityType  CustomFieldEntityType
+  name        String
+  slug        String
+  fieldType   CustomFieldType
+  isRequired  Boolean               @default(false)
+  isActive    Boolean               @default(true)
+  sortOrder   Int                   @default(0)
+  placeholder String?
+  helpText    String?
+  optionsJson String?
+  values      CustomFieldValue[]
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+
+  @@unique([workspaceId, entityType, slug])
+  @@index([workspaceId, entityType, isActive, sortOrder])
+}
+
+model CustomFieldValue {
+  id           String                 @id @default(cuid())
+  workspaceId  String
+  workspace    Workspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  definitionId String
+  definition   CustomFieldDefinition  @relation(fields: [definitionId], references: [id], onDelete: Cascade)
+  entityType   CustomFieldEntityType
+  leadId       String?
+  lead         Lead?                  @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  contactId    String?
+  contact      Contact?               @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  valueText    String?
+  valueNumber  Float?
+  valueDate    DateTime?
+  valueBoolean Boolean?
+  createdAt    DateTime               @default(now())
+  updatedAt    DateTime               @updatedAt
+
+  @@index([workspaceId, entityType])
+  @@index([leadId])
+  @@index([contactId])
+  @@index([definitionId])
+  @@unique([definitionId, leadId])
+  @@unique([definitionId, contactId])
+}
+
+model Integration {
+  id               String              @id @default(cuid())
+  workspaceId      String
+  workspace        Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  provider         IntegrationProvider
+  name             String
+  status           IntegrationStatus   @default(PENDING)
+  credentialsEnc   String?
+  configJson       String?
+  lastSyncAt       DateTime?
+  lastErrorAt      DateTime?
+  lastErrorMessage String?
+  conversations    Conversation[]
+  eventLogs        IntegrationEventLog[]
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+
+  @@index([workspaceId, provider, status])
+}
+
+model Conversation {
+  id                 String              @id @default(cuid())
+  workspaceId        String
+  workspace          Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  integrationId      String
+  integration        Integration         @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+  provider           IntegrationProvider
+  externalChatId     String
+  externalUserId     String?
+  externalUsername   String?
+  externalName       String?
+  externalEmail      String?
+  externalPhone      String?
+  subject            String?
+  contactId          String?
+  contact            Contact?            @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  leadId             String?
+  lead               Lead?               @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  assignedTo         String?
+  assignee           User?               @relation("AssignedConversations", fields: [assignedTo], references: [id], onDelete: SetNull)
+  lastMessageAt      DateTime?
+  lastMessagePreview String?
+  isRead             Boolean             @default(false)
+  isResolved         Boolean             @default(false)
+  messages           Message[]
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  @@unique([integrationId, externalChatId])
+  @@index([workspaceId, provider, isRead, isResolved])
+  @@index([workspaceId, lastMessageAt])
+  @@index([contactId])
+  @@index([leadId])
+  @@index([externalEmail])
+  @@index([externalPhone])
+}
+
+model Message {
+  id                String              @id @default(cuid())
+  workspaceId       String
+  workspace         Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  conversationId    String
+  conversation      Conversation        @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  provider          IntegrationProvider
+  externalMessageId String?
+  direction         MessageDirection
+  messageType       InboxMessageType    @default(TEXT)
+  senderName        String?
+  senderHandle      String?
+  senderEmail       String?
+  senderPhone       String?
+  subject           String?
+  text              String?
+  htmlBody          String?
+  attachmentsJson   String?
+  metaJson          String?
+  rawPayloadJson    String?
+  sentAt            DateTime
+  createdAt         DateTime            @default(now())
+
+  @@index([workspaceId, conversationId, sentAt])
+  @@index([externalMessageId])
+  @@unique([conversationId, externalMessageId])
+}
+
+model IntegrationEventLog {
+  id               String              @id @default(cuid())
+  workspaceId      String?
+  workspace        Workspace?          @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  integrationId    String?
+  integration      Integration?        @relation(fields: [integrationId], references: [id], onDelete: SetNull)
+  provider         IntegrationProvider
+  eventType        String
+  payloadJson      String
+  processingStatus String
+  errorMessage     String?
+  createdAt        DateTime            @default(now())
+  processedAt      DateTime?
+
+  @@index([provider, processingStatus])
+  @@index([integrationId, createdAt])
+}

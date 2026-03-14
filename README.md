@@ -1,36 +1,187 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Mini CRM
 
-## Getting Started
+Unified inbox CRM built with Next.js + Prisma (SQLite).
 
-First, run the development server:
+It combines multiple channels into one workspace:
+- Telegram
+- WhatsApp
+- Email (forwarding/webhook ingestion)
+
+## What this project does
+
+- Multi-workspace CRM with auth and role-based access
+- Unified Inbox with conversations and message timeline
+- Integration model: `Provider → Integration → Conversation → Message`
+- CRM linking from conversation:
+  - Link/unlink contact
+  - Link/unlink lead
+  - Create contact from conversation
+  - Create lead from conversation
+- Conversation workflow:
+  - Mark read/unread
+  - Resolve/reopen
+  - Assign/unassign owner
+- Integration event logs for debugging incoming events
+
+## Tech stack
+
+- Next.js 16 (App Router)
+- React 19 + TypeScript
+- Prisma 7 + SQLite (`better-sqlite3`)
+- Tailwind CSS 4
+- JWT auth (`jwt-simple`)
+
+## Quick start
+
+1) Install dependencies:
+
+```bash
+npm install
+```
+
+2) Create environment file (`.env`) with at least:
+
+```bash
+DATABASE_URL="file:./dev.db"
+JWT_SECRET="change-this-secret"
+CREDENTIALS_SECRET="change-this-too"
+PUBLIC_BASE_URL="https://your-public-url" # optional for local dev, recommended for webhooks
+```
+
+3) Sync database schema:
+
+```bash
+npx prisma db push
+npx prisma generate
+```
+
+4) Start dev server:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+5) Open app:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- http://localhost:3000
+- Register first user/workspace at `/register`
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## NPM scripts
 
-## Learn More
+```bash
+npm run dev    # Next dev server
+npm run build  # Production build + type check
+npm run start  # Run built app
+npm run lint   # ESLint
+```
 
-To learn more about Next.js, take a look at the following resources:
+## Core features
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### 1) Integrations
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Settings → Integrations supports:
+- Telegram connect/reconnect/disconnect
+- WhatsApp connect/reconnect/disconnect
+- Email connect/reconnect/disconnect
 
-## Deploy on Vercel
+Credentials are stored encrypted (`credentialsEnc`), and UI shows only masked values.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### 2) Inbound ingestion
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- Telegram webhook: `POST /api/webhooks/telegram/:integrationId`
+- WhatsApp webhook: `POST /api/webhooks/whatsapp/:integrationId`
+- Email ingestion webhook: `POST /api/webhooks/email/:integrationId`
+
+Every inbound event is logged into `IntegrationEventLog` with statuses:
+- `received`
+- `processed`
+- `ignored`
+- `failed`
+
+### 3) Inbox and conversations
+
+Inbox supports:
+- Filters: status, provider, assignee, linked/unlinked
+- Search by name/username/phone/email/subject/preview
+- Conversation details panel with CRM actions
+- Chat-like timeline (inbound/outbound visual difference)
+- Reply composer (currently outbound send enabled for Telegram)
+
+### 4) CRM actions from conversation
+
+API routes:
+- `POST /api/conversations/:id/create-contact`
+- `POST /api/conversations/:id/create-lead`
+- `POST /api/conversations/:id/link-contact`
+- `POST /api/conversations/:id/link-lead`
+- `POST /api/conversations/:id/unlink-contact`
+- `POST /api/conversations/:id/unlink-lead`
+- `PATCH /api/conversations/:id` (read/resolved/assigned)
+
+## Email webhook payload (MVP)
+
+`POST /api/webhooks/email/:integrationId`
+
+Expected JSON body:
+
+```json
+{
+  "messageId": "unique-message-id",
+  "threadId": "thread-id",
+  "from": { "name": "Alice", "email": "alice@example.com" },
+  "subject": "Hello",
+  "text": "Plain text body",
+  "html": "<p>HTML body</p>",
+  "sentAt": "2026-03-14T10:00:00Z"
+}
+```
+
+Notes:
+- `threadId` is used as conversation grouping key (`externalChatId`)
+- Deduping uses `externalMessageId` when provided
+
+## WhatsApp webhook verification
+
+`GET /api/webhooks/whatsapp/:integrationId`
+
+Supports Meta webhook verification via:
+- `hub.mode`
+- `hub.verify_token`
+- `hub.challenge`
+
+`POST /api/webhooks/whatsapp/:integrationId` handles inbound messages and supports optional signature verification when app secret is set.
+
+## Security and tenancy
+
+- Workspace isolation is enforced in API queries
+- Sensitive credentials are encrypted at rest
+- JWT session cookie for auth
+- Integrations can be disconnected without deleting history
+
+## Database models (high level)
+
+- `Workspace`
+- `User`
+- `Contact`
+- `Lead`
+- `Integration`
+- `Conversation`
+- `Message`
+- `IntegrationEventLog`
+- `CustomFieldDefinition` / `CustomFieldValue`
+
+## Current limitations (MVP)
+
+- Outbound replies are implemented for Telegram only
+- Email is inbound-focused (forwarding/webhook strategy)
+- WhatsApp/Email advanced outbound tooling and analytics are intentionally out of scope
+
+## Build status
+
+Latest local check:
+
+```bash
+npm run build
+```
+
+Build passes successfully.
