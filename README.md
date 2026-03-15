@@ -31,6 +31,31 @@ It combines multiple channels into one workspace:
 - Tailwind CSS 4
 - JWT auth (`jwt-simple`)
 
+## Project structure
+
+The codebase now follows a domain-oriented structure in `lib`:
+
+- `lib/server/*`
+  - Server-only modules: DB client, auth/session, encryption, provider clients.
+- `lib/features/*`
+  - Feature logic shared across API/routes (for example inbox normalization, custom field services).
+- `lib/client/*`
+  - Browser-only helpers (toasts, confirm dialog events, etc.).
+
+Legacy flat files in `lib/*.ts` are kept as compatibility re-exports. New code should import from the domain folders above.
+
+### API route conventions
+
+For new API handlers, prefer the shared server helpers:
+
+- `lib/server/auth/require-user.ts`
+  - `requireApiUser(req)` for workspace-authenticated handlers.
+- `lib/server/http/responses.ts`
+  - `withApiHandler(...)` for centralized exception handling.
+  - `badRequest/unauthorized/notFound` typed errors.
+
+This keeps route files focused on business logic and avoids repeated `401/400/404` boilerplate.
+
 ## Quick start
 
 1) Install dependencies:
@@ -183,5 +208,3 @@ Latest local check:
 ```bash
 npm run build
 ```
-
-Build passes successfully.

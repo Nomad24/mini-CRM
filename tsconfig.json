@@ -25,6 +25,15 @@
     "paths": {
       "@/*": [
         "./*"
+      ],
+      "@server/*": [
+        "./lib/server/*"
+      ],
+      "@features/*": [
+        "./lib/features/*"
+      ],
+      "@client/*": [
+        "./lib/client/*"
       ]
     }
   },
